@@ -208,6 +208,14 @@ let shouldSpawnNext = false;
 let wolfModel = null;
 let wolfSpawned = false;
 
+// Gray Rabbit model (appears at score 14)
+let rabbitModel = null;
+let rabbitSpawned = false;
+
+// Hamster model (appears at score 21)
+let hamsterModel = null;
+let hamsterSpawned = false;
+
 // Spotlight state
 let spotlightColor = 0xffffff; // White by default
 let spotlightTransition = 0;
@@ -381,6 +389,90 @@ function spawnWolf() {
     );
 }
 
+// Function to load and spawn Gray Rabbit model
+function spawnRabbit() {
+    if (rabbitSpawned) return;
+
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.load(
+        'Gray Rabbit.glb',
+        (gltf) => {
+            rabbitModel = gltf.scene;
+
+            // Scale the rabbit appropriately
+            rabbitModel.scale.set(0.5, 0.5, 0.5);
+
+            // Calculate bounding box for positioning
+            const box = new THREE.Box3().setFromObject(rabbitModel);
+            const rabbitBaseY = -box.min.y;
+
+            // Position rabbit next to the wolf
+            rabbitModel.position.set(3, rabbitBaseY, 0);
+
+            // Enable shadows
+            rabbitModel.traverse((node) => {
+                if (node.isMesh) {
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                }
+            });
+
+            scene.add(rabbitModel);
+            rabbitSpawned = true;
+
+            console.log('Gray Rabbit model spawned!');
+        },
+        (progress) => {
+            console.log('Loading rabbit: ' + (progress.loaded / progress.total * 100) + '%');
+        },
+        (error) => {
+            console.error('Error loading rabbit:', error);
+        }
+    );
+}
+
+// Function to load and spawn Hamster model
+function spawnHamster() {
+    if (hamsterSpawned) return;
+
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.load(
+        'Hamster.glb',
+        (gltf) => {
+            hamsterModel = gltf.scene;
+
+            // Scale the hamster appropriately
+            hamsterModel.scale.set(0.5, 0.5, 0.5);
+
+            // Calculate bounding box for positioning
+            const box = new THREE.Box3().setFromObject(hamsterModel);
+            const hamsterBaseY = -box.min.y;
+
+            // Position hamster next to the rabbit
+            hamsterModel.position.set(1, hamsterBaseY, 0);
+
+            // Enable shadows
+            hamsterModel.traverse((node) => {
+                if (node.isMesh) {
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                }
+            });
+
+            scene.add(hamsterModel);
+            hamsterSpawned = true;
+
+            console.log('Hamster model spawned!');
+        },
+        (progress) => {
+            console.log('Loading hamster: ' + (progress.loaded / progress.total * 100) + '%');
+        },
+        (error) => {
+            console.error('Error loading hamster:', error);
+        }
+    );
+}
+
 // Handle keyboard input
 document.addEventListener('keydown', (event) => {
     if (event.code === 'Space' && !isJumping && avocadoModel) {
@@ -464,6 +556,16 @@ function updateScore() {
     // Spawn wolf when score reaches 7
     if (score === 7 && !wolfSpawned) {
         spawnWolf();
+    }
+
+    // Spawn rabbit when score reaches 14
+    if (score === 14 && !rabbitSpawned) {
+        spawnRabbit();
+    }
+
+    // Spawn hamster when score reaches 21
+    if (score === 21 && !hamsterSpawned) {
+        spawnHamster();
     }
 }
 
