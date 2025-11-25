@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // Scene setup
@@ -50,8 +51,8 @@ scene.add(mainSpotlight);
 mainSpotlight.target.position.set(0, 0, 0); // Aimed at center stage
 scene.add(mainSpotlight.target);
 
-// Create a visible cone of light beam shining down on the whole stage
-const coneGeometry = new THREE.ConeGeometry(5, 14, 32, 1, false); // Wide radius to cover stage
+// Create a visible cone of light beam shining down on the whole stage (2x larger)
+const coneGeometry = new THREE.ConeGeometry(10, 14, 32, 1, false); // Wide radius to cover 2x larger stage
 const coneMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
@@ -88,8 +89,8 @@ scene.add(sideLight2.target);
 function createKaraokeStage() {
     const stageGroup = new THREE.Group();
 
-    // Main stage platform
-    const stageGeometry = new THREE.BoxGeometry(8, 0.5, 6);
+    // Main stage platform (2x larger)
+    const stageGeometry = new THREE.BoxGeometry(16, 0.5, 12);
     const stageMaterial = new THREE.MeshStandardMaterial({
         color: 0x1a1a1a,
         metalness: 0.3,
@@ -101,8 +102,8 @@ function createKaraokeStage() {
     stage.castShadow = true;
     stageGroup.add(stage);
 
-    // Stage edge trim (gold)
-    const trimGeometry = new THREE.BoxGeometry(8.2, 0.1, 6.2);
+    // Stage edge trim (gold) - 2x larger
+    const trimGeometry = new THREE.BoxGeometry(16.4, 0.1, 12.4);
     const trimMaterial = new THREE.MeshStandardMaterial({
         color: 0xffd700,
         metalness: 0.8,
@@ -112,12 +113,12 @@ function createKaraokeStage() {
     trim.position.y = 0.05;
     stageGroup.add(trim);
 
-    // Stage steps
+    // Stage steps - 2x larger
     for (let i = 0; i < 3; i++) {
-        const stepGeometry = new THREE.BoxGeometry(2, 0.2, 1);
+        const stepGeometry = new THREE.BoxGeometry(4, 0.2, 2);
         const stepMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a });
         const step = new THREE.Mesh(stepGeometry, stepMaterial);
-        step.position.set(0, -0.5 - (i * 0.2), 3.5 + (i * 0.3));
+        step.position.set(0, -0.5 - (i * 0.2), 7 + (i * 0.6));
         step.receiveShadow = true;
         stageGroup.add(step);
     }
@@ -176,7 +177,7 @@ let isJumping = false;
 const JUMP_FORCE = 0.8;
 const GRAVITY = 0.03;
 const MOVE_SPEED = 0.15;
-const STAGE_LIMIT_X = 3.5; // Keep avocado on stage
+const STAGE_LIMIT_X = 7; // Keep lion on stage (2x larger stage)
 
 // Movement keys
 let keys = {
@@ -195,13 +196,17 @@ let microphoneX = 0; // Starting X position
 let microphoneY = 5; // Fixed height
 let microphoneDirection = 1; // 1 for right, -1 for left
 const MIC_SPEED = 0.05;
-const MIC_MIN_X = -3;
-const MIC_MAX_X = 3;
+const MIC_MIN_X = -6; // 2x larger stage
+const MIC_MAX_X = 6; // 2x larger stage
 
 // Game score
 let score = 0;
 let hasMicrophone = false;
 let shouldSpawnNext = false;
+
+// Wolf model (appears at score 7)
+let wolfModel = null;
+let wolfSpawned = false;
 
 // Spotlight state
 let spotlightColor = 0xffffff; // White by default
@@ -209,15 +214,96 @@ let spotlightTransition = 0;
 const SPOTLIGHT_YELLOW = 0xffff00;
 const SPOTLIGHT_WHITE = 0xffffff;
 
-// Load avocado model
+// Audio setup
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+let backgroundMusic = null;
+let isMusicPlaying = false;
+
+// Function to play success chime (ding sound)
+function playSuccessChime() {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    // Create a pleasant chime sound with two notes
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // First note (E note)
+    oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime);
+    // Second note (A note - perfect fourth up)
+    oscillator.frequency.setValueAtTime(880, audioContext.currentTime + 0.1);
+
+    oscillator.type = 'sine';
+
+    // Envelope for smooth sound
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+}
+
+// Function to create and play background music
+function startBackgroundMusic() {
+    if (isMusicPlaying) return;
+
+    const tempo = 120; // BPM
+    const beatDuration = 60 / tempo;
+
+    // Simple upbeat melody pattern (notes in Hz)
+    const melody = [
+        523.25, 587.33, 659.25, 783.99, // C D E G
+        659.25, 587.33, 523.25, 587.33, // E D C D
+        523.25, 587.33, 659.25, 783.99, // C D E G
+        880, 783.99, 659.25, 587.33     // A G E D
+    ];
+
+    let noteIndex = 0;
+
+    function playNote() {
+        if (!isMusicPlaying) return;
+
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.value = melody[noteIndex % melody.length];
+        oscillator.type = 'triangle';
+
+        // Lower volume for background music
+        gainNode.gain.setValueAtTime(0.08, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + beatDuration * 0.8);
+
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + beatDuration * 0.8);
+
+        noteIndex++;
+
+        // Schedule next note
+        setTimeout(playNote, beatDuration * 1000);
+    }
+
+    isMusicPlaying = true;
+    playNote();
+}
+
+// Start music on first user interaction (required by browsers)
+document.addEventListener('keydown', function startMusic() {
+    startBackgroundMusic();
+    document.removeEventListener('keydown', startMusic);
+}, { once: true });
+
+// Load lion model
 const loader = new GLTFLoader();
 loader.load(
-    'AVOCADO.glb',
+    'Lion.glb',
     (gltf) => {
         avocadoModel = gltf.scene;
 
-        // Scale up the avocado to make it bigger (2x larger)
-        avocadoModel.scale.set(10, 10, 10);
+        // Scale the lion to appropriate size
+        avocadoModel.scale.set(0.5, 0.5, 0.5);
 
         // Calculate avocado's bounding box AFTER scaling to position it properly on the stage
         const box = new THREE.Box3().setFromObject(avocadoModel);
@@ -243,7 +329,7 @@ loader.load(
         microphone.position.set(microphoneX, microphoneY, 0);
         scene.add(microphone);
 
-        console.log('Avocado model loaded successfully!');
+        console.log('Lion model loaded successfully!');
     },
     (progress) => {
         console.log('Loading: ' + (progress.loaded / progress.total * 100) + '%');
@@ -252,6 +338,48 @@ loader.load(
         console.error('Error loading model:', error);
     }
 );
+
+// Function to load and spawn wolf model
+function spawnWolf() {
+    if (wolfSpawned) return;
+
+    const fbxLoader = new FBXLoader();
+    fbxLoader.load(
+        'Wolf.fbx',
+        (fbx) => {
+            wolfModel = fbx;
+
+            // Scale the wolf appropriately
+            wolfModel.scale.set(0.01, 0.01, 0.01);
+
+            // Calculate bounding box for positioning
+            const box = new THREE.Box3().setFromObject(wolfModel);
+            const wolfBaseY = -box.min.y;
+
+            // Position wolf on the right side of the stage
+            wolfModel.position.set(5, wolfBaseY, 0);
+
+            // Enable shadows
+            wolfModel.traverse((node) => {
+                if (node.isMesh) {
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                }
+            });
+
+            scene.add(wolfModel);
+            wolfSpawned = true;
+
+            console.log('Wolf model spawned!');
+        },
+        (progress) => {
+            console.log('Loading wolf: ' + (progress.loaded / progress.total * 100) + '%');
+        },
+        (error) => {
+            console.error('Error loading wolf:', error);
+        }
+    );
+}
 
 // Handle keyboard input
 document.addEventListener('keydown', (event) => {
@@ -316,6 +444,9 @@ function checkCollision() {
         // Remove old microphone from scene
         scene.remove(microphone);
 
+        // Play success chime!
+        playSuccessChime();
+
         // Turn spotlight yellow!
         spotlightColor = SPOTLIGHT_YELLOW;
         mainSpotlight.color.setHex(SPOTLIGHT_YELLOW);
@@ -329,6 +460,11 @@ function checkCollision() {
 // Update score display
 function updateScore() {
     document.getElementById('count').textContent = score;
+
+    // Spawn wolf when score reaches 7
+    if (score === 7 && !wolfSpawned) {
+        spawnWolf();
+    }
 }
 
 // Animation loop
